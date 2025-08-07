@@ -19,7 +19,7 @@ const ProductForm = () => {
   const [imagenesPreviews, setImagenesPreviews] = useState([]);
   const [imagenesFiles, setImagenesFiles] = useState([]);
   const [imagenesAEliminar, setImagenesAEliminar] = useState([]);
-  
+  const [imagenesExistentes, setImagenesExistentes] = useState([]);
   const [producto, setProducto] = useState({
     nombre: '',
     descripcion: '',
@@ -32,7 +32,16 @@ const ProductForm = () => {
     en_oferta: false,
     porcentaje_descuento: 0
   });
-
+  const urlToFile = async (url, filename) => {
+  try {
+    const response = await fetch(url);
+    const blob = await response.blob();
+    return new File([blob], filename, { type: blob.type });
+  } catch (error) {
+    console.error('Error al convertir URL a File:', error);
+    return null;
+  }
+};
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -55,7 +64,22 @@ const ProductForm = () => {
             en_oferta: productoExistente.en_oferta,
             porcentaje_descuento: productoExistente.porcentaje_descuento
           });
+          if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
+          const imagenesFilesPromises = productoExistente.imagenes.map(async (imgUrl) => {
+            const filename = imgUrl.split('/').pop();
+            return urlToFile(imgUrl, filename);
+          });
           
+          const imagenesFiles = (await Promise.all(imagenesFilesPromises)).filter(Boolean);
+          
+          setImagenesFiles(imagenesFiles);
+          
+          setImagenesPreviews(imagenesFiles.map(file => ({
+            url: URL.createObjectURL(file),
+            isExisting: true,
+            file
+          })));
+        }
           // Cargar previsualizaciones de imágenes existentes
           if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
             setImagenesPreviews(productoExistente.imagenes.map(img => ({
@@ -64,7 +88,22 @@ const ProductForm = () => {
               id: img
             })));
           }
+            // Guardar imágenes existentes por separado
+        if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
+          const imagenesExistentes = productoExistente.imagenes.map(img => ({
+            url: img,
+            nombre: img.split('/').pop() // Guardar solo el nombre del archivo
+          }));
           
+          setImagenesExistentes(imagenesExistentes);
+          
+          // Previsualizaciones incluyen las existentes
+          setImagenesPreviews(imagenesExistentes.map(img => ({
+            url: img.url,
+            isExisting: true,
+            nombre: img.nombre
+          })));
+        } 
           // Cargar subcategorías
           if (productoExistente.categoria_id) {
             const cat = cats.find(c => c.id === parseInt(productoExistente.categoria_id));
@@ -105,79 +144,83 @@ const ProductForm = () => {
     });
   };
   
-  const handleImageChange = (e) => {
-    const files = Array.from(e.target.files);
-    
-    // Previsualización de imágenes
-    const newPreviews = files.map(file => ({
-      url: URL.createObjectURL(file),
-      isExisting: false,
-      file
-    }));
-    
-    setImagenesPreviews([...imagenesPreviews, ...newPreviews]);
-    setImagenesFiles([...imagenesFiles, ...files]);
-  };
+ const handleImageChange = (e) => {
+  const files = Array.from(e.target.files);
+  
+  // Previsualización de nuevas imágenes
+  const newPreviews = files.map(file => ({
+    url: URL.createObjectURL(file),
+    isExisting: false,
+    file
+  }));
+  
+  setImagenesPreviews([...imagenesPreviews, ...newPreviews]);
+  setImagenesFiles([...imagenesFiles, ...files]);
+};
 
-  const removeImage = (index) => {
-    const imageToRemove = imagenesPreviews[index];
+const removeImage = (index) => {
+  const imageToRemove = imagenesPreviews[index];
+  
+  if (imageToRemove.isExisting) {
+    // Agregar a imágenes a eliminar
+    setImagenesAEliminar([...imagenesAEliminar, imageToRemove.nombre]);
+  }
+  
+  // Eliminar de las previsualizaciones
+  const newPreviews = [...imagenesPreviews];
+  newPreviews.splice(index, 1);
+  setImagenesPreviews(newPreviews);
+  
+  // Si es una nueva imagen, eliminar del array de archivos
+  if (!imageToRemove.isExisting) {
+    setImagenesFiles(imagenesFiles.filter(
+      file => file.name !== imageToRemove.file.name
+    ));
+  }
+};
+
+const handleSubmit = async (e) => {
+  e.preventDefault();
+  
+  // Validación
+  if (!producto.nombre.trim()) {
+    setError('El nombre del producto es obligatorio');
+    return;
+  }
+  
+  setError('');
+  setLoading(true);
+  
+  try {
+    const productData = { 
+      ...producto,
+      categoria_id: Number(producto.categoria_id),
+      subcategoria_id: Number(producto.subcategoria_id),
+    };
     
-    // Si es una imagen existente, agregar a la lista para eliminar
-    if (imageToRemove.isExisting) {
-      setImagenesAEliminar([...imagenesAEliminar, imageToRemove.url]);
-    }
-    
-    // Eliminar de las previsualizaciones
-    const newPreviews = [...imagenesPreviews];
-    newPreviews.splice(index, 1);
-    setImagenesPreviews(newPreviews);
-    
-    // Si es una nueva imagen, eliminar del array de archivos
-    if (!imageToRemove.isExisting) {
-      const newFiles = [...imagenesFiles];
-      const fileIndex = newFiles.findIndex(f => 
-        f.name === imageToRemove.file.name && 
-        f.size === imageToRemove.file.size
+    if (id) {
+      // Filtrar imágenes no eliminadas
+      const imagenesAEnviar = imagenesFiles.filter((_, index) => {
+        return !imagenesAEliminar.includes(index);
+      });
+      
+      await updateProductWithImages(
+        id, 
+        productData, 
+        imagenesAEnviar
       );
-      if (fileIndex !== -1) {
-        newFiles.splice(fileIndex, 1);
-        setImagenesFiles(newFiles);
-      }
+    } else {
+      await createProduct(productData, imagenesFiles);
     }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
     
-    try {
-      const productData = { ...producto };
-      
-      // Asegurar que los IDs son números
-      productData.categoria_id = Number(producto.categoria_id);
-      productData.subcategoria_id = Number(producto.subcategoria_id);
-      
-      if (id) {
-        // Usar la función actualizada con imágenes a eliminar
-        await updateProductWithImages(
-          id, 
-          productData, 
-          imagenesFiles,
-          imagenesAEliminar
-        );
-      } else {
-        await createProduct(productData, imagenesFiles);
-      }
-      
-      navigate('/productos');
-    } catch (err) {
-      setError('Error al guardar: ' + (err.message || JSON.stringify(err)));
-      console.error("Error detallado:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
+    navigate('/productos');
+  } catch (err) {
+    setError('Error al guardar: ' + (err.message || JSON.stringify(err)));
+    console.error("Error detallado:", err);
+  } finally {
+    setLoading(false);
+  }
+};
 
   if (loading) {
     return (
@@ -482,28 +525,37 @@ const ProductForm = () => {
               
               <div className="grid grid-cols-3 gap-4">
                 {imagenesPreviews.map((preview, index) => (
-                  <div key={index} className="relative group rounded-xl overflow-hidden border border-[#dde9d9] h-40">
-                    <img 
-                      src={preview.url} 
-                      alt={`Preview ${index}`} 
-                      className="w-full h-full object-cover"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => removeImage(index)}
-                      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center opacity-90 hover:opacity-100 transition-opacity"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </button>
-                    {preview.isExisting && (
-                      <span className="absolute bottom-2 left-2 bg-[#1173b5] text-white text-xs px-2 py-1 rounded">
-                        Existente
-                      </span>
-                    )}
-                  </div>
-                ))}
+  <div key={index} className={`relative group rounded-xl overflow-hidden border-2 h-40 ${
+    preview.markedForDelete ? 'border-red-500 opacity-60' : 'border-[#dde9d9]'
+  }`}>
+    <img 
+      src={preview.url} 
+      alt={`Preview ${index}`} 
+      className="w-full h-full object-cover"
+    />
+    <button
+      type="button"
+      onClick={() => removeImage(index)}
+      className="absolute top-2 right-2 bg-red-500 text-white rounded-full w-7 h-7 flex items-center justify-center opacity-90 hover:opacity-100 transition-opacity"
+    >
+      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+      </svg>
+    </button>
+    
+    {preview.isExisting && !preview.markedForDelete && (
+      <span className="absolute bottom-2 left-2 bg-[#1173b5] text-white text-xs px-2 py-1 rounded">
+        Existente
+      </span>
+    )}
+    
+    {preview.markedForDelete && (
+      <span className="absolute bottom-2 left-2 bg-red-500 text-white text-xs px-2 py-1 rounded">
+        Eliminar
+      </span>
+    )}
+  </div>
+))}
               </div>
               
               {imagenesPreviews.length === 0 && (

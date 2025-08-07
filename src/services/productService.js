@@ -202,35 +202,24 @@ export const createProductWithImages = async (productData, files) => {
   }
 };
 
-export const updateProductWithImages = async (id, productData, files, imagesToDelete = []) => {
+export const updateProductWithImages = async (id, productData, imagenes) => {
   try {
     const token = localStorage.getItem('token');
     const formData = new FormData();
     
-    // Agregar campos del producto (convertir números)
-    formData.append('nombre', productData.nombre);
-    formData.append('descripcion', productData.descripcion);
-    formData.append('precio', Number(productData.precio));
-    formData.append('stock', Number(productData.stock));
-    formData.append('estado', productData.estado);
-    formData.append('orientado_a', productData.orientado_a);
-    formData.append('categoria_id', Number(productData.categoria_id)); // AÑADIDO
-    formData.append('subcategoria_id', Number(productData.subcategoria_id));
-    formData.append('en_oferta', productData.en_oferta ? 'true' : 'false');
-    formData.append('porcentaje_descuento', Number(productData.porcentaje_descuento));
+    // Campos del producto
+    Object.keys(productData).forEach(key => {
+      formData.append(key, productData[key]);
+    });
     
-    // Agregar nuevas imágenes
-    files.forEach(file => {
+    // Agregar todas las imágenes como archivos
+    imagenes.forEach(file => {
       formData.append('imagenes', file);
     });
     
-    // Agregar imágenes a eliminar
-    formData.append('imagesToDelete', JSON.stringify(imagesToDelete));
-    
-    // Usar el endpoint público para pruebas (quitar el /admin)
     const response = await axios.put(
-      `https://tienda-kxep.onrender.com/api/productos/${id}`, // Endpoint público
-      formData, 
+      `https://tienda-kxep.onrender.com/api/productos/${id}`,
+      formData,
       {
         headers: {
           'Authorization': `Bearer ${token}`,
