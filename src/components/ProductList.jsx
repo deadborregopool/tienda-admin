@@ -5,7 +5,10 @@ import {
   deleteProduct, 
   searchProducts,
   filterByPrice,
-  filterByStock
+  filterByStock,
+  getProductsByCategory,
+  getProductsBySubcategory,
+  getCategories
 } from '../services/productService';
 
 const ProductList = () => {
@@ -16,11 +19,16 @@ const ProductList = () => {
   const [filters, setFilters] = useState({
     minPrice: '',
     maxPrice: '',
-    minStock: ''
+    minStock: '',
+    categoryId: '',
+    subcategoryId: ''
   });
+  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
 
   useEffect(() => {
     loadProducts();
+    loadCategories();
   }, []);
 
   const loadProducts = async () => {
@@ -32,6 +40,36 @@ const ProductList = () => {
     } catch (err) {
       setError('Error al cargar productos');
       setLoading(false);
+    }
+  };
+
+  const loadCategories = async () => {
+    try {
+      const data = await getCategories();
+      setCategories(data);
+    } catch (err) {
+      console.error('Error al cargar categorías:', err);
+    }
+  };
+
+  const handleCategoryChange = (e) => {
+    const categoryId = e.target.value;
+    setFilters({
+      ...filters,
+      categoryId,
+      subcategoryId: '' // Reset subcategoría al cambiar categoría
+    });
+    
+    // Cargar subcategorías para la categoría seleccionada
+    if (categoryId) {
+      const category = categories.find(cat => cat.id == categoryId);
+      if (category && category.subcategorias) {
+        setSubcategories(category.subcategorias);
+      } else {
+        setSubcategories([]);
+      }
+    } else {
+      setSubcategories([]);
     }
   };
 
@@ -85,12 +123,25 @@ const ProductList = () => {
           }
           break;
           
+        case 'category':
+          if (filters.categoryId) {
+            filteredProducts = await getProductsByCategory(filters.categoryId);
+          }
+          break;
+          
+        case 'subcategory':
+          if (filters.subcategoryId) {
+            filteredProducts = await getProductsBySubcategory(filters.subcategoryId);
+          }
+          break;
+          
         default:
           filteredProducts = await getProducts();
       }
       
       if (filteredProducts.length > 0) {
         setProducts(filteredProducts);
+        setError('');
       } else {
         setError('No se encontraron productos con esos filtros');
       }
@@ -103,7 +154,14 @@ const ProductList = () => {
   };
 
   const handleResetFilters = () => {
-    setFilters({ minPrice: '', maxPrice: '', minStock: '' });
+    setFilters({ 
+      minPrice: '', 
+      maxPrice: '', 
+      minStock: '',
+      categoryId: '',
+      subcategoryId: '' 
+    });
+    setSubcategories([]);
     loadProducts();
   };
 
@@ -208,6 +266,33 @@ const ProductList = () => {
                 placeholder="10"
               />
             </div>
+            <div>
+              <label className="block text-gray-700 mb-2 font-medium">Categoría</label>
+              <select
+                value={filters.categoryId}
+                onChange={handleCategoryChange}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#93c441] focus:border-transparent"
+              >
+                <option value="">Todas las categorías</option>
+                {categories.map(category => (
+                  <option key={category.id} value={category.id}>{category.nombre}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-gray-700 mb-2 font-medium">Subcategoría</label>
+              <select
+                value={filters.subcategoryId}
+                onChange={(e) => setFilters({...filters, subcategoryId: e.target.value})}
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#93c441] focus:border-transparent"
+                disabled={!filters.categoryId}
+              >
+                <option value="">Todas las subcategorías</option>
+                {subcategories.map(subcategory => (
+                  <option key={subcategory.id} value={subcategory.id}>{subcategory.nombre}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           <div className="flex flex-wrap gap-3">
@@ -228,6 +313,34 @@ const ProductList = () => {
                 <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
               </svg>
               Filtrar por Stock
+            </button>
+            <button
+              onClick={() => handleFilter('category')}
+              disabled={!filters.categoryId}
+              className={`${
+                filters.categoryId 
+                  ? 'bg-[#1173b5] hover:bg-[#0e5a8f]' 
+                  : 'bg-gray-300 cursor-not-allowed'
+              } text-white px-5 py-2.5 rounded-lg transition-colors duration-300 flex items-center gap-2`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+              </svg>
+              Filtrar por Categoría
+            </button>
+            <button
+              onClick={() => handleFilter('subcategory')}
+              disabled={!filters.subcategoryId}
+              className={`${
+                filters.subcategoryId 
+                  ? 'bg-[#1173b5] hover:bg-[#0e5a8f]' 
+                  : 'bg-gray-300 cursor-not-allowed'
+              } text-white px-5 py-2.5 rounded-lg transition-colors duration-300 flex items-center gap-2`}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
+              </svg>
+              Filtrar por Subcategoría
             </button>
             <button
               onClick={handleResetFilters}

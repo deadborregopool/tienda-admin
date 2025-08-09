@@ -12,7 +12,23 @@ const getAuthHeaders = () => {
     }
   };
 };
+export const getProductsBySubcategory = async (subcategoryId) => {
+  try {
+    const response = await axios.get(`${API_URL}/subcategorias/${subcategoryId}/solo-productos`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
 
+export const getProductsByCategory = async (categoryId) => {
+  try {
+    const response = await axios.get(`${API_URL}/categorias/${categoryId}/productos`);
+    return response.data;
+  } catch (error) {
+    throw error.response?.data || error.message;
+  }
+};
 // Categorías y Subcategorías
 export const getCategories = async () => {
   try {
