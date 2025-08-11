@@ -43,85 +43,55 @@ const ProductForm = () => {
   }
 };
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        setLoading(true);
-        const cats = await getCategories();
-        setCategorias(cats);
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const cats = await getCategories();
+      setCategorias(cats);
+      
+      if (id) {
+        const productoExistente = await getProductById(id);
         
-        if (id) {
-          const productoExistente = await getProductById(id);
-          
-          setProducto({
-            nombre: productoExistente.nombre,
-            descripcion: productoExistente.descripcion,
-            precio: productoExistente.precio,
-            stock: productoExistente.stock,
-            estado: productoExistente.estado,
-            orientado_a: productoExistente.orientado_a,
-            categoria_id: productoExistente.categoria_id,
-            subcategoria_id: productoExistente.subcategoria_id,
-            en_oferta: productoExistente.en_oferta,
-            porcentaje_descuento: productoExistente.porcentaje_descuento
-          });
-          if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
-          const imagenesFilesPromises = productoExistente.imagenes.map(async (imgUrl) => {
-            const filename = imgUrl.split('/').pop();
-            return urlToFile(imgUrl, filename);
-          });
-          
-          const imagenesFiles = (await Promise.all(imagenesFilesPromises)).filter(Boolean);
-          
-          setImagenesFiles(imagenesFiles);
-          
-          setImagenesPreviews(imagenesFiles.map(file => ({
-            url: URL.createObjectURL(file),
-            isExisting: true,
-            file
-          })));
-        }
-          // Cargar previsualizaciones de imágenes existentes
-          if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
-            setImagenesPreviews(productoExistente.imagenes.map(img => ({
-              url: img,
-              isExisting: true,
-              id: img
-            })));
-          }
-            // Guardar imágenes existentes por separado
+        setProducto({
+          nombre: productoExistente.nombre,
+          descripcion: productoExistente.descripcion,
+          precio: productoExistente.precio,
+          stock: productoExistente.stock,
+          estado: productoExistente.estado,
+          orientado_a: productoExistente.orientado_a,
+          categoria_id: productoExistente.categoria_id,
+          subcategoria_id: productoExistente.subcategoria_id,
+          en_oferta: productoExistente.en_oferta,
+          porcentaje_descuento: productoExistente.porcentaje_descuento
+        });
+
+        // Solo guardar URLs de imágenes existentes
         if (productoExistente.imagenes && productoExistente.imagenes.length > 0) {
           const imagenesExistentes = productoExistente.imagenes.map(img => ({
             url: img,
-            nombre: img.split('/').pop() // Guardar solo el nombre del archivo
+            nombre: img.split('/').pop()
           }));
           
           setImagenesExistentes(imagenesExistentes);
-          
-          // Previsualizaciones incluyen las existentes
           setImagenesPreviews(imagenesExistentes.map(img => ({
             url: img.url,
             isExisting: true,
             nombre: img.nombre
           })));
-        } 
-          // Cargar subcategorías
-          if (productoExistente.categoria_id) {
-            const cat = cats.find(c => c.id === parseInt(productoExistente.categoria_id));
-            if (cat) {
-              setSubcategorias(cat.subcategorias);
-            }
-          }
         }
-        setLoading(false);
-      } catch (err) {
-        setError('Error al cargar datos del producto');
-        console.error(err);
-        setLoading(false);
+        
+        // Cargar subcategorías...
       }
-    };
+      setLoading(false);
+    } catch (err) {
+      setError('Error al cargar datos del producto');
+      console.error(err);
+      setLoading(false);
+    }
+  };
 
-    fetchData();
-  }, [id]);
+  fetchData();
+}, [id]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -162,8 +132,8 @@ const removeImage = (index) => {
   const imageToRemove = imagenesPreviews[index];
   
   if (imageToRemove.isExisting) {
-    // Agregar a imágenes a eliminar
-    setImagenesAEliminar([...imagenesAEliminar, imageToRemove.nombre]);
+    // Agregar a imágenes a eliminar por nombre
+    setImagenesAEliminar(prev => [...prev, imageToRemove.nombre]);
   }
   
   // Eliminar de las previsualizaciones
@@ -182,7 +152,6 @@ const removeImage = (index) => {
 const handleSubmit = async (e) => {
   e.preventDefault();
   
-  // Validación
   if (!producto.nombre.trim()) {
     setError('El nombre del producto es obligatorio');
     return;
@@ -199,15 +168,30 @@ const handleSubmit = async (e) => {
     };
     
     if (id) {
-      // Filtrar imágenes no eliminadas
-      const imagenesAEnviar = imagenesFiles.filter((_, index) => {
-        return !imagenesAEliminar.includes(index);
-      });
+      // Convertir SOLO las imágenes existentes que no se van a eliminar
+      const imagenesParaConservar = imagenesPreviews
+        .filter(preview => preview.isExisting && 
+                  !imagenesAEliminar.includes(preview.nombre))
+        .map(preview => preview.nombre);
+      
+      const imagenesExistentesFiles = [];
+      
+      for (const nombre of imagenesParaConservar) {
+        const imgExistente = imagenesExistentes.find(img => img.nombre === nombre);
+        if (imgExistente) {
+          const file = await urlToFile(imgExistente.url, imgExistente.nombre);
+          if (file) imagenesExistentesFiles.push(file);
+        }
+      }
+
+      // Combinar imágenes existentes conservadas con nuevas imágenes
+      const todasLasImagenes = [...imagenesExistentesFiles, ...imagenesFiles];
       
       await updateProductWithImages(
         id, 
         productData, 
-        imagenesAEnviar
+        todasLasImagenes,
+        imagenesAEliminar // Enviar imágenes a eliminar
       );
     } else {
       await createProduct(productData, imagenesFiles);
